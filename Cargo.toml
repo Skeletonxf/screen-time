@@ -1,0 +1,8 @@
+[package]
+name = "screen_time"
+version = "0.1.0"
+authors = ["Skeletonxf <skeletonxf@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+gtk = { version = "0.2", features = ["v3_22"] }
