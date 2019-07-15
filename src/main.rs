@@ -26,14 +26,22 @@ fn main() {
         // program the reset button to reset the timer
         let time = app.content.time.clone();
         let state = state.clone();
+        let done = app.header.done.clone();
 
         app.header.reset.connect_clicked(move |_| {
             match &start_time.elapsed() {
                 Ok(elapsed) => {
+                    let seconds = elapsed.as_secs() - state.get();
+
                     // update the UI back to 0 seconds
                     time.set_markup("<span size='200000'>0</span>");
                     // update the state to ignore all the elapsed seconds so far
                     state.set(elapsed.as_secs());
+
+                    // make sure the done button is no longer green when resetting
+                    if seconds >= 20 {
+                        done.get_style_context().map(|c| c.remove_class("suggested-action"));
+                    }
                 },
                 Err(e) => {
                     println!("Error: {:?}", e);
@@ -43,10 +51,21 @@ fn main() {
     }
 
     {
-        // program the done button to close the window
-        let time = app.content.time.clone();
+        // program the done button to close the window if the time is >= 20 seconds
+        let state = state.clone();
+
         app.header.done.connect_clicked(move |_| {
-            time.set_label("4");
+            match &start_time.elapsed() {
+                Ok(elapsed) => {
+                    if elapsed.as_secs() - state.get() >= 20 {
+                        main_quit();
+                        Inhibit(false);
+                    }
+                },
+                Err(e) => {
+                    println!("Error: {:?}", e);
+                }
+            }
         });
     }
 
@@ -54,16 +73,23 @@ fn main() {
     {
         let time = app.content.time.clone();
         let state = state.clone();
+        let done = app.header.done.clone();
+
         gtk::timeout_add(500, move || {
             match &start_time.elapsed() {
                 Ok(elapsed) => {
-                    time.set_markup(&format!(
-                        "<span size='200000'>{}</span>",
-                        // instead of trying to make the system time atomic
-                        // we store the seconds since starting the program to
-                        // ignore atomically instead, which provides the same
-                        // function
-                        elapsed.as_secs() - state.get()));
+                    // instead of trying to make the system time atomic
+                    // we store the seconds since starting the program to
+                    // ignore atomically instead, which provides the same
+                    // function
+                    let seconds = elapsed.as_secs() - state.get();
+
+                    time.set_markup(&format!("<span size='200000'>{}</span>", seconds));
+
+                    // make the done button go green when ready
+                    if seconds >= 20 {
+                        done.get_style_context().map(|c| c.add_class("suggested-action"));
+                    }
                 },
                 Err(e) => {
                     println!("Error: {:?}", e);
@@ -190,8 +216,6 @@ impl Header {
         // Create the two buttons for the UI
         let reset = Button::new_with_label("Reset");
         let done = Button::new_with_label("Done");
-
-        done.get_style_context().map(|c| c.add_class("suggested-action"));
 
         // Put the buttons on each side of the header
         container.pack_start(&reset);
