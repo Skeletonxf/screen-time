@@ -2,6 +2,11 @@ extern crate gtk;
 use gtk::*;
 use std::process;
 use std::time::{SystemTime};
+use std::sync::Arc;
+use std::sync::atomic::AtomicU64;
+// UI <-> App state operations use Sequentially Consistent ordering
+// https://doc.rust-lang.org/std/sync/atomic/enum.Ordering.html#variant.SeqCst
+use std::sync::atomic::Ordering;
 
 fn main() {
     // Initialize GTK before proceeding.
@@ -10,17 +15,30 @@ fn main() {
         process::exit(1);
     }
 
+    // Use an atomic reference counter so we can use this from each closure
+    let state = Arc::new(Timer::new());
+
     let app = App::new();
 
-    // TODO: Make this atomic so can modify it with reset button
-    // and check its value from done button
     let start_time = SystemTime::now();
 
     {
         // program the reset button to reset the timer
         let time = app.content.time.clone();
+        let state = state.clone();
+
         app.header.reset.connect_clicked(move |_| {
-            time.set_label("2");
+            match &start_time.elapsed() {
+                Ok(elapsed) => {
+                    // update the UI back to 0 seconds
+                    time.set_markup("<span size='200000'>0</span>");
+                    // update the state to ignore all the elapsed seconds so far
+                    state.set(elapsed.as_secs());
+                },
+                Err(e) => {
+                    println!("Error: {:?}", e);
+                }
+            }
         });
     }
 
@@ -35,10 +53,17 @@ fn main() {
     // Increment the timer label every second with 500ms polls
     {
         let time = app.content.time.clone();
+        let state = state.clone();
         gtk::timeout_add(500, move || {
             match &start_time.elapsed() {
                 Ok(elapsed) => {
-                    time.set_markup(&format!("<span size='200000'>{}</span>", elapsed.as_secs()));
+                    time.set_markup(&format!(
+                        "<span size='200000'>{}</span>",
+                        // instead of trying to make the system time atomic
+                        // we store the seconds since starting the program to
+                        // ignore atomically instead, which provides the same
+                        // function
+                        elapsed.as_secs() - state.get()));
                 },
                 Err(e) => {
                     println!("Error: {:?}", e);
@@ -53,6 +78,10 @@ fn main() {
 
     // Start the GTK main event loop
     gtk::main();
+}
+
+pub struct Timer {
+    pub time: AtomicU64,
 }
 
 pub struct App {
@@ -70,6 +99,20 @@ pub struct Header {
 pub struct Content {
     pub container: Box,
     pub time: Label,
+}
+
+impl Timer {
+    fn new() -> Timer {
+        Timer { time: AtomicU64::new(0) }
+    }
+
+    fn get(&self) -> u64 {
+        self.time.load(Ordering::SeqCst)
+    }
+
+    fn set(&self, value: u64) {
+        self.time.store(value, Ordering::SeqCst);
+    }
 }
 
 impl Content {
