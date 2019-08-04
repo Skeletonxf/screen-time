@@ -1,3 +1,4 @@
+extern crate libnotify;
 extern crate gtk;
 use gtk::*;
 use std::process;
@@ -14,6 +15,8 @@ fn main() {
         eprintln!("failed to initialize GTK Application");
         process::exit(1);
     }
+
+    send_notification();
 
     // Use an atomic reference counter so we can use this from each closure
     let state = Arc::new(Timer::new());
@@ -104,6 +107,16 @@ fn main() {
 
     // Start the GTK main event loop
     gtk::main();
+}
+
+fn send_notification() {
+    libnotify::init("screen_time").unwrap();
+    let notification = libnotify::Notification::new(
+        "Break",
+        Some("20 seconds"),
+        None);
+    notification.show().unwrap();
+    libnotify::uninit();
 }
 
 pub struct Timer {
